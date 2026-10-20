@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f6f8">
+  <title>Stash – Notes & To-Do</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== SVG icon sprite (referenced with <use href="#i-name">) ===== -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-.9 2-1.8 0-1.2-1-1.5-1-2.7 0-1 .8-1.5 1.8-1.5H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8Z"/><circle cx="7.5" cy="11" r=".8"/><circle cx="10" cy="7.5" r=".8"/><circle cx="14.5" cy="7.5" r=".8"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3H7l3-3-1-6Z"/><path d="M12 13v7"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6V3Z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 3 3 5-6"/></symbol>
+  </svg>
+
+  <!-- ===== TOP BAR ===== -->
+  <header class="topbar">
+    <div class="topbar__row">
+      <label class="search">
+        <svg class="icon"><use href="#i-search"/></svg>
+        <input id="search-input" type="search" placeholder="Search notes and tasks" autocomplete="off" aria-label="Search">
+        <button id="search-clear" class="search__clear" type="button" aria-label="Clear search" hidden>
+          <svg class="icon icon--sm"><use href="#i-close"/></svg>
+        </button>
+      </label>
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle dark mode">
+        <svg class="icon icon--moon"><use href="#i-moon"/></svg>
+        <svg class="icon icon--sun"><use href="#i-sun"/></svg>
+      </button>
+    </div>
+
+    <nav id="tag-filters" class="pills" aria-label="Filter by tag">
+      <button class="pill is-active" type="button" data-tag="all">All</button>
+      <button class="pill" type="button" data-tag="urgent">Urgent</button>
+      <button class="pill" type="button" data-tag="work">Work</button>
+      <button class="pill" type="button" data-tag="personal">Personal</button>
+    </nav>
+  </header>
+
+  <!-- ===== MAIN VIEWS (SPA tabs) ===== -->
+  <main class="main">
+
+    <!-- NOTES VIEW -->
+    <section id="view-notes" class="view is-active" aria-labelledby="tab-notes">
+      <div id="notes-grid" class="masonry">
+
+        <!-- Sample note card (static preview; app.js will render these from data) -->
+        <article class="card card--note" data-id="n1" data-color="yellow" data-tags="work">
+          <header class="card__head">
+            <h2 class="card__title" contenteditable="false">Sprint planning ideas</h2>
+            <div class="card__actions">
+              <div class="palette-wrap" tabindex="-1">
+                <button class="icon-btn icon-btn--sm" type="button" data-action="palette" aria-label="Change color">
+                  <svg class="icon icon--sm"><use href="#i-palette"/></svg>
+                </button>
+                <div class="palette" role="group" aria-label="Card colors">
+                  <button type="button" class="swatch" data-color="yellow" aria-label="Yellow"></button>
+                  <button type="button" class="swatch" data-color="blue" aria-label="Blue"></button>
+                  <button type="button" class="swatch" data-color="green" aria-label="Green"></button>
+                  <button type="button" class="swatch" data-color="pink" aria-label="Pink"></button>
+                  <button type="button" class="swatch" data-color="lavender" aria-label="Lavender"></button>
+                  <button type="button" class="swatch" data-color="plain" aria-label="No color"></button>
+                </div>
+              </div>
+              <button class="icon-btn icon-btn--sm" type="button" data-action="edit" aria-label="Edit card">
+                <svg class="icon icon--sm"><use href="#i-edit"/></svg>
+              </button>
+              <button class="icon-btn icon-btn--sm" type="button" data-action="delete" aria-label="Delete card">
+                <svg class="icon icon--sm"><use href="#i-trash"/></svg>
+              </button>
+            </div>
+          </header>
+          <textarea class="note__text" rows="4" placeholder="Write something…" aria-label="Note text">Review the backlog on Monday. Ask design for the onboarding mockups. Book a demo slot with the client and send the agenda 24 hours before.</textarea>
+          <footer class="card__foot">
+            <div class="badges"><span class="badge" data-tag="work">Work</span></div>
+            <button class="ai-btn" type="button" data-action="extract">
+              <span aria-hidden="true">✨</span> Extract tasks
+            </button>
+          </footer>
+        </article>
+
+        <article class="card card--note" data-id="n2" data-color="pink" data-tags="personal">
+          <header class="card__head">
+            <h2 class="card__title">Gift ideas for Mom</h2>
+            <div class="card__actions">
+              <button class="icon-btn icon-btn--sm" type="button" data-action="palette" aria-label="Change color"><svg class="icon icon--sm"><use href="#i-palette"/></svg></button>
+              <button class="icon-btn icon-btn--sm" type="button" data-action="edit" aria-label="Edit card"><svg class="icon icon--sm"><use href="#i-edit"/></svg></button>
+              <button class="icon-btn icon-btn--sm" type="button" data-action="delete" aria-label="Delete card"><svg class="icon icon--sm"><use href="#i-trash"/></svg></button>
+            </div>
+          </header>
+          <textarea class="note__text" rows="3" aria-label="Note text">A good reading lamp, a silk scarf, or a framed family photo.</textarea>
+          <footer class="card__foot">
+            <div class="badges"><span class="badge" data-tag="personal">Personal</span></div>
+            <button class="ai-btn" type="button" data-action="extract"><span aria-hidden="true">✨</span> Extract tasks</button>
+          </footer>
+        </article>
+
+      </div>
+
+      <div id="notes-empty" class="empty" hidden>
+        <svg class="icon icon--xl"><use href="#i-note"/></svg>
+        <p class="empty__title">No notes here yet</p>
+        <p class="empty__sub">Tap + to write your first note.</p>
+      </div>
+    </section>
+
+    <!-- TO-DO VIEW -->
+    <section id="view-todo" class="view" aria-labelledby="tab-todo">
+      <div id="todo-grid" class="masonry">
+
+        <!-- Sample to-do card -->
+        <article class="card card--todo" data-id="t1" data-color="blue" data-tags="urgent,work">
+          <header class="card__head">
+            <h2 class="card__title">Ship v1 checklist</h2>
+            <div class="card__actions">
+              <button class="icon-btn icon-btn--sm" type="button" data-action="palette" aria-label="Change color"><svg class="icon icon--sm"><use href="#i-palette"/></svg></button>
+              <button class="icon-btn icon-btn--sm" type="button" data-action="edit" aria-label="Edit card"><svg class="icon icon--sm"><use href="#i-edit"/></svg></button>
+              <button class="icon-btn icon-btn--sm" type="button" data-action="delete" aria-label="Delete card"><svg class="icon icon--sm"><use href="#i-trash"/></svg></button>
+            </div>
+          </header>
+
+          <ul class="tasks">
+            <li class="task is-done">
+              <label class="task__label">
+                <input class="task__check" type="checkbox" checked>
+                <span class="task__text">Finalize the app layout</span>
+              </label>
+            </li>
+            <li class="task">
+              <label class="task__label">
+                <input class="task__check" type="checkbox">
+                <span class="task__text">Connect Firestore</span>
+              </label>
+            </li>
+            <li class="task">
+              <label class="task__label">
+                <input class="task__check" type="checkbox">
+                <span class="task__text">Add the Gemini task extractor</span>
+              </label>
+            </li>
+          </ul>
+
+          <button class="add-item" type="button" data-action="add-item">+ Add item</button>
+
+          <footer class="card__foot">
+            <div class="badges">
+              <span class="badge" data-tag="urgent">Urgent</span>
+              <span class="badge" data-tag="work">Work</span>
+            </div>
+            <span class="progress">1/3</span>
+          </footer>
+        </article>
+
+        <article class="card card--todo" data-id="t2" data-color="green" data-tags="personal">
+          <header class="card__head">
+            <h2 class="card__title">Weekend errands</h2>
+            <div class="card__actions">
+              <button class="icon-btn icon-btn--sm" type="button" data-action="palette" aria-label="Change color"><svg class="icon icon--sm"><use href="#i-palette"/></svg></button>
+              <button class="icon-btn icon-btn--sm" type="button" data-action="edit" aria-label="Edit card"><svg class="icon icon--sm"><use href="#i-edit"/></svg></button>
+              <button class="icon-btn icon-btn--sm" type="button" data-action="delete" aria-label="Delete card"><svg class="icon icon--sm"><use href="#i-trash"/></svg></button>
+            </div>
+          </header>
+          <ul class="tasks">
+            <li class="task"><label class="task__label"><input class="task__check" type="checkbox"><span class="task__text">Pick up the dry cleaning</span></label></li>
+            <li class="task"><label class="task__label"><input class="task__check" type="checkbox"><span class="task__text">Buy groceries</span></label></li>
+          </ul>
+          <button class="add-item" type="button" data-action="add-item">+ Add item</button>
+          <footer class="card__foot">
+            <div class="badges"><span class="badge" data-tag="personal">Personal</span></div>
+            <span class="progress">0/2</span>
+          </footer>
+        </article>
+
+      </div>
+
+      <div id="todo-empty" class="empty" hidden>
+        <svg class="icon icon--xl"><use href="#i-check"/></svg>
+        <p class="empty__title">Nothing to do</p>
+        <p class="empty__sub">Tap + to add a to-do list.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== FLOATING ACTION BUTTON ===== -->
+  <button id="fab" class="fab" type="button" aria-label="New note">
+    <svg class="icon icon--lg"><use href="#i-plus"/></svg>
+  </button>
+
+  <!-- ===== BOTTOM NAVIGATION ===== -->
+  <nav class="bottom-nav" role="tablist" aria-label="Main sections">
+    <button id="tab-notes" class="tab is-active" type="button" role="tab" aria-selected="true" data-view="notes">
+      <span class="tab__icon" aria-hidden="true">📝</span>
+      <span class="tab__label">Notes</span>
+    </button>
+    <button id="tab-todo" class="tab" type="button" role="tab" aria-selected="false" data-view="todo">
+      <span class="tab__icon" aria-hidden="true">✅</span>
+      <span class="tab__label">To-Do</span>
+    </button>
+  </nav>
+
+  <!-- ===== TEMPLATES (cloned by app.js when creating new cards) ===== -->
+  <template id="tpl-task">
+    <li class="task">
+      <label class="task__label">
+        <input class="task__check" type="checkbox">
+        <span class="task__text" contenteditable="true"></span>
+      </label>
+    </li>
+  </template>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
