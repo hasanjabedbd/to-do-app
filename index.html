@@ -224,6 +224,17 @@
     </li>
   </template>
 
+  <!-- Google sign-in screen (shown by app.js only when needed) -->
+  <div id="login" class="login" hidden>
+    <div class="login__card">
+      <div class="login__logo" aria-hidden="true">📝</div>
+      <h1 class="login__title">Stash</h1>
+      <p class="login__sub">Sign in to keep your notes and to-dos in sync on all your devices.</p>
+      <button id="login-btn" class="login__btn" type="button">Continue with Google</button>
+      <p id="login-error" class="login__err" role="alert"></p>
+    </div>
+  </div>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script type="module" src="app.js"></script>

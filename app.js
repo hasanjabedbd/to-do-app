@@ -72,7 +72,7 @@ function saveNow(card) {
   card.updatedAt = Date.now();
   return Promise.resolve(store.save(card)).catch((err) => {
     console.error(err);
-    toast("Couldn't save your changes");
+    toast("Couldn't save: " + (err.code || err.message), { duration: 12000 });
   });
 }
 
@@ -559,7 +559,7 @@ el.themeToggle.addEventListener("click", () => {
    Toast
    ========================================================================== */
 let toastTimer;
-function toast(message, { actionLabel, onAction } = {}) {
+function toast(message, { actionLabel, onAction, duration } = {}) {
   clearTimeout(toastTimer);
   el.toast.innerHTML = `<span>${esc(message)}</span>`;
   el.toast.classList.toggle("has-action", Boolean(actionLabel));
@@ -575,7 +575,33 @@ function toast(message, { actionLabel, onAction } = {}) {
     el.toast.append(b);
   }
   el.toast.classList.add("is-visible");
-  toastTimer = setTimeout(() => el.toast.classList.remove("is-visible"), actionLabel ? 5000 : 2600);
+  toastTimer = setTimeout(() => el.toast.classList.remove("is-visible"), duration ?? (actionLabel ? 5000 : 2600));
+}
+
+/* ==========================================================================
+   Google sign-in gate
+   ========================================================================== */
+function requireLogin() {
+  const overlay = $("#login");
+  const btn = $("#login-btn");
+  const errBox = $("#login-error");
+  overlay.hidden = false;
+
+  return new Promise((resolve) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      errBox.textContent = "";
+      try {
+        await store.signIn();
+        overlay.hidden = true;
+        resolve();
+      } catch (err) {
+        console.error(err);
+        errBox.textContent = "Sign-in failed: " + (err.code || err.message);
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 /* ==========================================================================
@@ -591,9 +617,10 @@ async function boot() {
     console.warn("Firebase unavailable, falling back to local storage:", err);
     store = localStore;
     await store.init();
-    toast("Cloud sync unavailable. Saving on this device only.");
+    toast("Cloud sync unavailable (" + (err.code || err.message) + "). Saving on this device only.", { duration: 15000 });
   }
-  store.subscribe(onRemote);
+  if (store.mode === "firebase" && !store.signedIn) await requireLogin();
+  store.subscribe(onRemote, (err) => toast("Cloud error: " + (err.code || err.message), { duration: 15000 }));
 }
 
 boot();

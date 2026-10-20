@@ -527,3 +527,14 @@ button { cursor: pointer; border: 0; background: none; }
 .card .icon-btn[data-action="pin"][aria-pressed="true"] { color: var(--accent); }
 .icon-btn[data-action="pin"][aria-pressed="true"] svg { fill: currentColor; }
 .card.is-pinned .card__actions { opacity: 1; }
+
+/* ---------- 15. Login screen ---------- */
+.login { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: var(--bg); }
+.login__card { width: 100%; max-width: 360px; padding: 32px 24px; text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; box-shadow: var(--shadow-2); }
+.login__logo { font-size: 40px; line-height: 1; }
+.login__title { margin: 10px 0 6px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.login__sub { margin: 0 0 22px; color: var(--text-soft); }
+.login__btn { width: 100%; padding: 13px 16px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font-weight: 700; transition: transform 0.15s var(--ease); }
+.login__btn:active { transform: scale(0.97); }
+.login__btn:disabled { opacity: 0.6; pointer-events: none; }
+.login__err { min-height: 1.4em; margin: 12px 0 0; color: var(--tag-urgent); font-size: 13px; }

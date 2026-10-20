@@ -11,11 +11,11 @@
    • While firebaseConfig still holds the YOUR_ placeholders, `store` is the
      localStorage store, so the app works immediately with zero setup.
    • Once you paste real values, `store` becomes Firestore (offline cache,
-     anonymous sign-in, data kept per user at users/{uid}/cards/{cardId}).
+     anonymous sign-in, data kept per user at stash/{uid}/cards/{cardId}).
 
    SETUP
    1. Firebase console → create project → add a Web app → copy its config below.
-   2. Build → Authentication → Sign-in method → enable "Anonymous".
+   2. Authentication → Sign-in method → enable "Google".
    3. Build → AI Logic → Get started → choose "Gemini Developer API"
       (powers the ✨ Extract tasks button; no API key goes in this code).
    4. Build → Firestore Database → create database, then use these rules:
@@ -23,7 +23,7 @@
       rules_version = '2';
       service cloud.firestore {
         match /databases/{database}/documents {
-          match /users/{uid}/cards/{cardId} {
+          match /stash/{uid}/cards/{cardId} {
             allow read, write: if request.auth != null && request.auth.uid == uid;
           }
         }
@@ -87,11 +87,22 @@ function createFirebaseStore() {
   let fs;          // firestore module functions
   let db;
   let uid;
+  let auth;
+  let authApi;
 
-  const cardsRef = () => fs.collection(db, "users", uid, "cards");
+  const cardsRef = () => fs.collection(db, "stash", uid, "cards");
 
   return {
     mode: "firebase",
+
+    get signedIn() { return Boolean(uid); },
+
+    // Google sign-in (call from a button click so the popup isn't blocked)
+    async signIn() {
+      const provider = new authApi.GoogleAuthProvider();
+      const cred = await authApi.signInWithPopup(auth, provider);
+      uid = cred.user.uid;
+    },
 
     async init() {
       // Loaded on demand so local mode never touches the network.
@@ -122,30 +133,30 @@ function createFirebaseStore() {
         }),
       });
 
-      const auth = authMod.getAuth(firebaseApp);
-      uid = await new Promise((resolve, reject) => {
-        const off = authMod.onAuthStateChanged(auth, (user) => {
-          if (user) { off(); resolve(user.uid); }
-        }, reject);
-        if (!auth.currentUser) authMod.signInAnonymously(auth).catch(reject);
+      authApi = authMod;
+      auth = authMod.getAuth(firebaseApp);
+      // Wait for Firebase to tell us if someone is already signed in.
+      const user = await new Promise((resolve, reject) => {
+        const off = authMod.onAuthStateChanged(auth, (u) => { off(); resolve(u); }, reject);
       });
+      uid = user && !user.isAnonymous ? user.uid : null;
     },
 
-    subscribe(cb) {
+    subscribe(cb, onError) {
       const q = fs.query(cardsRef(), fs.orderBy("createdAt", "desc"));
       return fs.onSnapshot(
         q,
         (snap) => cb(snap.docs.map((d) => d.data())),
-        (err) => console.error("Firestore listener error:", err)
+        (err) => { console.error("Firestore listener error:", err); onError?.(err); }
       );
     },
 
     save(card) {
-      return fs.setDoc(fs.doc(db, "users", uid, "cards", card.id), card);
+      return fs.setDoc(fs.doc(db, "stash", uid, "cards", card.id), card);
     },
 
     remove(id) {
-      return fs.deleteDoc(fs.doc(db, "users", uid, "cards", id));
+      return fs.deleteDoc(fs.doc(db, "stash", uid, "cards", id));
     },
   };
 }
