@@ -9,13 +9,17 @@
    }
    ========================================================================== */
 
-import { store as primaryStore, localStore } from "./firebase-config.js";
+import { store as primaryStore } from "./firebase-config.js";
 import { extractTasks } from "./ai.js";
 
 /* ---------- Constants & helpers ---------- */
 const TAGS = ["urgent", "work", "personal"];
 const COLORS = ["yellow", "blue", "green", "pink", "lavender"];
 const SAVE_DELAY = 400;
+
+// Safety PIN: asked before editing or deleting a card (stops accidental taps).
+// Anyone who reads this code can see it, so it is not real security.
+const EDIT_PIN = "4212";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -52,8 +56,16 @@ const el = {
 };
 
 const findCard = (id) => state.cards.find((c) => c.id === id);
-// Pinned cards first, then newest first
-const byOrder = (a, b) => (Number(!!b.pinned) - Number(!!a.pinned)) || (b.createdAt - a.createdAt);
+// Order: pinned cards first; then your dragged order; brand-new cards (no order yet) go on top
+const byOrder = (a, b) => {
+  const p = Number(!!b.pinned) - Number(!!a.pinned);
+  if (p) return p;
+  const ao = a.order, bo = b.order;
+  if (ao == null && bo == null) return b.createdAt - a.createdAt;
+  if (ao == null) return -1;
+  if (bo == null) return 1;
+  return ao - bo;
+};
 const cardEl = (id) => el.main.querySelector(`.card[data-id="${id}"]`);
 
 /* ==========================================================================
@@ -89,7 +101,7 @@ window.addEventListener("pagehide", flushPending);
 
 /* Remote changes (Firestore snapshot or first local load) */
 function onRemote(cards) {
-  if (timers.size) return; // don't clobber unsaved local edits
+  if (timers.size || dragging) return; // don't clobber unsaved edits or a drag in progress
   state.cards = [...cards].sort(byOrder);
   if (document.activeElement?.closest?.(".card")) return; // don't steal focus mid-edit
   render();
@@ -127,7 +139,7 @@ function cardHTML(c) {
   const body = isTodo
     ? `<ul class="tasks">${c.items.map((i) => taskHTML(i, editing)).join("")}</ul>
        <button class="add-item" type="button" data-action="add-item">+ Add item</button>`
-    : `<textarea class="note__text" rows="3" placeholder="Write something…" aria-label="Note text">${esc(c.text)}</textarea>`;
+    : `<textarea class="note__text" rows="3" placeholder="${editing ? "Write something…" : "Tap the pencil to write"}" aria-label="Note text"${editing ? "" : " readonly"}>${esc(c.text)}</textarea>`;
 
   const badges = editing
     ? TAGS.map((t) => `<button type="button" class="badge badge--toggle${c.tags.includes(t) ? " is-on" : ""}" data-tag="${t}" data-toggle-tag="${t}" aria-pressed="${c.tags.includes(t)}">${cap(t)}</button>`).join("")
@@ -142,6 +154,7 @@ function cardHTML(c) {
       <header class="card__head">
         <h2 class="card__title" contenteditable="${editing}">${esc(c.title) || (editing ? "" : "Untitled")}</h2>
         <div class="card__actions">
+          <button class="icon-btn icon-btn--sm drag" type="button" data-drag aria-label="Drag to reorder">${icon("grip")}</button>
           <button class="icon-btn icon-btn--sm" type="button" data-action="pin" aria-pressed="${Boolean(c.pinned)}" aria-label="${c.pinned ? "Unpin" : "Pin to top"}">${icon("pin")}</button>
           <div class="palette-wrap">
             <button class="icon-btn icon-btn--sm" type="button" data-action="palette" aria-label="Change color" aria-haspopup="true">${icon("palette")}</button>
@@ -354,7 +367,7 @@ async function runExtract(card, btn) {
 /* ==========================================================================
    Event delegation (one set of listeners for both grids)
    ========================================================================== */
-el.main.addEventListener("click", (e) => {
+el.main.addEventListener("click", async (e) => {
   const node = e.target.closest(".card");
   if (!node) return;
   const card = findCard(node.dataset.id);
@@ -382,9 +395,11 @@ el.main.addEventListener("click", (e) => {
         break;
       }
       case "edit":
+        if (state.editingId !== card.id && !(await askPin("Enter PIN to edit"))) return;
         setEditing(state.editingId === card.id ? null : card.id);
         break;
       case "delete":
+        if (!(await askPin("Enter PIN to delete"))) return;
         deleteCard(card.id);
         break;
       case "pin":
@@ -607,6 +622,12 @@ function requireLogin() {
 /* ==========================================================================
    Boot
    ========================================================================== */
+function showOffline(err) {
+  $("#offline-err").textContent = err?.code || err?.message || "";
+  $("#offline-btn").onclick = () => location.reload();
+  $("#offline").hidden = false;
+}
+
 async function boot() {
   initTheme();
   render(); // clears the static sample cards from index.html
@@ -614,13 +635,215 @@ async function boot() {
   try {
     await store.init();
   } catch (err) {
-    console.warn("Firebase unavailable, falling back to local storage:", err);
-    store = localStore;
-    await store.init();
-    toast("Cloud sync unavailable (" + (err.code || err.message) + "). Saving on this device only.", { duration: 15000 });
+    // No "save on this device only" fallback: if the cloud can't be reached, say so.
+    console.error("Firebase unavailable:", err);
+    showOffline(err);
+    return;
   }
   if (store.mode === "firebase" && !store.signedIn) await requireLogin();
   store.subscribe(onRemote, (err) => toast("Cloud error: " + (err.code || err.message), { duration: 15000 }));
 }
+
+/* ==========================================================================
+   PIN prompt
+   ========================================================================== */
+function askPin(message) {
+  const box = $("#pin"), sheet = $(".pin__card", box), input = $("#pin-input"), err = $("#pin-error");
+  $("#pin-msg").textContent = message;
+  input.value = "";
+  err.textContent = "";
+  box.hidden = false;
+  input.focus();
+
+  return new Promise((resolve) => {
+    const finish = (ok) => {
+      box.hidden = true;
+      input.oninput = input.onkeydown = box.onclick = null;
+      $("#pin-ok").onclick = $("#pin-cancel").onclick = null;
+      resolve(ok);
+    };
+    const submit = () => {
+      if (input.value === EDIT_PIN) return finish(true);
+      err.textContent = "Wrong PIN. Try again.";
+      input.value = "";
+      sheet.classList.remove("is-shake");
+      void sheet.offsetWidth; // restart the shake animation
+      sheet.classList.add("is-shake");
+      input.focus();
+    };
+    input.oninput = () => {
+      input.value = input.value.replace(/\D/g, "");
+      if (input.value.length === EDIT_PIN.length) submit();
+    };
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") { e.preventDefault(); submit(); }
+      else if (e.key === "Escape") finish(false);
+    };
+    $("#pin-ok").onclick = submit;
+    $("#pin-cancel").onclick = () => finish(false);
+    box.onclick = (e) => { if (e.target === box) finish(false); };
+  });
+}
+
+/* ==========================================================================
+   Drag to reorder (mouse and touch). Grab the ⋮⋮ handle on a card.
+   ========================================================================== */
+let dragging = false;
+
+el.main.addEventListener("pointerdown", (e) => {
+  const handle = e.target.closest("[data-drag]");
+  if (!handle || (e.pointerType === "mouse" && e.button !== 0)) return;
+  const node = handle.closest(".card");
+  if (!node) return;
+  e.preventDefault();
+  startDrag(node, e);
+});
+
+function startDrag(node, e) {
+  const grid = node.parentElement;
+  const type = node.classList.contains("card--todo") ? "todo" : "note";
+  const rect = node.getBoundingClientRect();
+  const ox = e.clientX - rect.left, oy = e.clientY - rect.top;
+
+  // Floating copy that follows your finger/mouse; an invisible shield keeps the pointer captured
+  const clone = node.cloneNode(true);
+  clone.classList.remove("is-new");
+  clone.classList.add("drag-clone");
+  Object.assign(clone.style, { width: rect.width + "px", left: rect.left + "px", top: rect.top + "px" });
+  const shield = document.createElement("div");
+  shield.className = "drag-shield";
+  document.body.append(shield, clone);
+  document.body.classList.add("is-dragging-cards");
+  node.classList.add("is-dragging");
+  shield.setPointerCapture(e.pointerId);
+  dragging = true;
+
+  const onMove = (ev) => {
+    clone.style.left = ev.clientX - ox + "px";
+    clone.style.top = ev.clientY - oy + "px";
+
+    // Scroll the page when dragging near the top or bottom edge
+    if (ev.clientY < 90) window.scrollBy(0, -16);
+    else if (ev.clientY > innerHeight - 90) window.scrollBy(0, 16);
+
+    const under = document
+      .elementsFromPoint(ev.clientX, ev.clientY)
+      .find((n) => n.classList?.contains("card") && n !== node && n !== clone && n.parentElement === grid);
+    if (!under) return;
+    const r = under.getBoundingClientRect();
+    const after = ev.clientY > r.top + r.height / 2;
+    const ref = after ? under.nextElementSibling : under;
+    if (ref !== node && node.nextElementSibling !== ref) grid.insertBefore(node, ref);
+  };
+
+  const end = (commit) => {
+    shield.remove();
+    clone.remove();
+    document.body.classList.remove("is-dragging-cards");
+    node.classList.remove("is-dragging");
+    dragging = false;
+    if (commit) commitOrder(grid, type); else render();
+  };
+
+  shield.addEventListener("pointermove", onMove);
+  shield.addEventListener("pointerup", () => end(true));
+  shield.addEventListener("pointercancel", () => end(false));
+}
+
+// Save the new order. Cards hidden by a search/filter keep their place.
+function commitOrder(grid, type) {
+  const domIds = $$(".card", grid).map((c) => c.dataset.id);
+  const visible = new Set(domIds);
+  const full = state.cards.filter((c) => c.type === type).sort(byOrder).map((c) => c.id);
+  const slots = [];
+  full.forEach((id, i) => { if (visible.has(id)) slots.push(i); });
+  slots.forEach((slot, k) => { full[slot] = domIds[k]; });
+
+  full.forEach((id, i) => {
+    const card = findCard(id);
+    if (card && card.order !== i) {
+      card.order = i;
+      saveNow(card);
+    }
+  });
+  state.cards.sort(byOrder);
+  render();
+}
+
+/* ==========================================================================
+   Reorder the Notes / To-Do tabs: drag a tab left or right.
+   The first tab is also the one the app opens on. Saved on this device.
+   ========================================================================== */
+const nav = $(".bottom-nav");
+const TAB_KEY = "stash.tabOrder";
+let tabSuppress = false;
+
+function initTabOrder() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TAB_KEY));
+    if (Array.isArray(saved)) {
+      saved.forEach((v) => {
+        const t = $(`.tab[data-view="${v}"]`, nav);
+        if (t) nav.append(t);
+      });
+    }
+  } catch { /* storage blocked: keep default order */ }
+  const first = $(".tab", nav);
+  if (first && first.dataset.view !== state.view) setView(first.dataset.view);
+}
+
+// After a drag, ignore the click that the browser fires on release
+nav.addEventListener("click", (e) => {
+  if (tabSuppress) { e.stopPropagation(); e.preventDefault(); tabSuppress = false; }
+}, true);
+
+nav.addEventListener("pointerdown", (e) => {
+  const tab = e.target.closest(".tab");
+  if (!tab || (e.pointerType === "mouse" && e.button !== 0)) return;
+  let startX = e.clientX;
+  let moved = false;
+  tab.setPointerCapture(e.pointerId);
+
+  const onMove = (ev) => {
+    let dx = ev.clientX - startX;
+    if (!moved && Math.abs(dx) < 8) return;
+    moved = true;
+    tab.classList.add("is-dragging-tab");
+
+    // Swap by moving the OTHER tab, so the dragged one keeps its pointer capture
+    const other = $$(".tab", nav).find((t) => t !== tab);
+    if (other) {
+      const r = other.getBoundingClientRect();
+      const mid = r.left + r.width / 2;
+      const before = tab.offsetLeft;
+      if (tab.nextElementSibling === other && ev.clientX > mid) nav.insertBefore(other, tab);
+      else if (tab.previousElementSibling === other && ev.clientX < mid) tab.after(other);
+      startX += tab.offsetLeft - before;
+      dx = ev.clientX - startX;
+    }
+    tab.style.transform = `translateX(${dx}px)`;
+  };
+
+  const stop = () => {
+    tab.removeEventListener("pointermove", onMove);
+    tab.removeEventListener("pointerup", stop);
+    tab.removeEventListener("pointercancel", stop);
+    tab.style.transform = "";
+    tab.classList.remove("is-dragging-tab");
+    if (moved) {
+      tabSuppress = true;
+      setTimeout(() => { tabSuppress = false; }, 60);
+      try {
+        localStorage.setItem(TAB_KEY, JSON.stringify($$(".tab", nav).map((t) => t.dataset.view)));
+      } catch { /* ignore */ }
+    }
+  };
+
+  tab.addEventListener("pointermove", onMove);
+  tab.addEventListener("pointerup", stop);
+  tab.addEventListener("pointercancel", stop);
+});
+
+initTabOrder();
 
 boot();

@@ -538,3 +538,28 @@ button { cursor: pointer; border: 0; background: none; }
 .login__btn:active { transform: scale(0.97); }
 .login__btn:disabled { opacity: 0.6; pointer-events: none; }
 .login__err { min-height: 1.4em; margin: 12px 0 0; color: var(--tag-urgent); font-size: 13px; }
+
+/* ---------- 16. Drag to reorder ---------- */
+.drag { touch-action: none; cursor: grab; }
+.drag:active { cursor: grabbing; }
+.card.is-dragging { opacity: 0.3; }
+.drag-clone { position: fixed; z-index: 100; margin: 0; pointer-events: none; opacity: 0.96; transform: scale(1.03) rotate(1deg); box-shadow: var(--shadow-2); }
+.drag-shield { position: fixed; inset: 0; z-index: 99; touch-action: none; cursor: grabbing; }
+body.is-dragging-cards { user-select: none; -webkit-user-select: none; }
+
+/* ---------- 17. PIN prompt ---------- */
+.pin { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 20px; background: rgba(10, 12, 20, 0.55); }
+.pin__card { width: 100%; max-width: 300px; padding: 22px; text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow-2); }
+.pin__card.is-shake { animation: pin-shake 0.3s; }
+@keyframes pin-shake { 25% { transform: translateX(-7px); } 75% { transform: translateX(7px); } }
+.pin__msg { margin: 0 0 14px; font-weight: 700; }
+.pin__input { width: 100%; height: 52px; padding: 0 0 0 0.5em; text-align: center; font-size: 26px; letter-spacing: 0.5em; border-radius: 12px; border: 1px solid var(--border); background: var(--bg); color: var(--text); outline: 0; }
+.pin__input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.pin__err { min-height: 1.4em; margin: 8px 0 0; color: var(--tag-urgent); font-size: 13px; }
+.pin__btns { display: flex; gap: 8px; margin-top: 6px; }
+.pin__btn { flex: 1; padding: 11px; border-radius: 12px; background: var(--surface-2); font-weight: 700; }
+.pin__btn--ok { background: var(--accent); color: var(--accent-ink); }
+
+/* ---------- 18. Draggable bottom tabs ---------- */
+.tab { touch-action: none; user-select: none; -webkit-user-select: none; position: relative; }
+.tab.is-dragging-tab { z-index: 2; background: var(--surface); box-shadow: var(--shadow-2); }
