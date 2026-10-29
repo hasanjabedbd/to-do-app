@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="view-notes">
 
   <!-- ===== SVG icon sprite (referenced with <use href="#i-name">) ===== -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -22,6 +22,8 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3H7l3-3-1-6Z"/><path d="M12 13v7"/></symbol>
     <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.2"/><circle cx="15" cy="6" r="1.2"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><circle cx="9" cy="18" r="1.2"/><circle cx="15" cy="18" r="1.2"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="8" r=".6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
@@ -54,69 +56,13 @@
   </header>
 
   <!-- ===== MAIN VIEWS (SPA tabs) ===== -->
-  <main class="main">
+  <main class="main on-notes">
 
-    <!-- NOTES VIEW -->
+    <!-- NOTES VIEW (Simplenote-style: list + editor, drawn by app.js) -->
     <section id="view-notes" class="view is-active" aria-labelledby="tab-notes">
-      <div id="notes-grid" class="masonry">
-
-        <!-- Sample note card (static preview; app.js will render these from data) -->
-        <article class="card card--note" data-id="n1" data-color="yellow" data-tags="work">
-          <header class="card__head">
-            <h2 class="card__title" contenteditable="false">Sprint planning ideas</h2>
-            <div class="card__actions">
-              <div class="palette-wrap" tabindex="-1">
-                <button class="icon-btn icon-btn--sm" type="button" data-action="palette" aria-label="Change color">
-                  <svg class="icon icon--sm"><use href="#i-palette"/></svg>
-                </button>
-                <div class="palette" role="group" aria-label="Card colors">
-                  <button type="button" class="swatch" data-color="yellow" aria-label="Yellow"></button>
-                  <button type="button" class="swatch" data-color="blue" aria-label="Blue"></button>
-                  <button type="button" class="swatch" data-color="green" aria-label="Green"></button>
-                  <button type="button" class="swatch" data-color="pink" aria-label="Pink"></button>
-                  <button type="button" class="swatch" data-color="lavender" aria-label="Lavender"></button>
-                  <button type="button" class="swatch" data-color="plain" aria-label="No color"></button>
-                </div>
-              </div>
-              <button class="icon-btn icon-btn--sm" type="button" data-action="edit" aria-label="Edit card">
-                <svg class="icon icon--sm"><use href="#i-edit"/></svg>
-              </button>
-              <button class="icon-btn icon-btn--sm" type="button" data-action="delete" aria-label="Delete card">
-                <svg class="icon icon--sm"><use href="#i-trash"/></svg>
-              </button>
-            </div>
-          </header>
-          <textarea class="note__text" rows="4" placeholder="Write something…" aria-label="Note text">Review the backlog on Monday. Ask design for the onboarding mockups. Book a demo slot with the client and send the agenda 24 hours before.</textarea>
-          <footer class="card__foot">
-            <div class="badges"><span class="badge" data-tag="work">Work</span></div>
-            <button class="ai-btn" type="button" data-action="extract">
-              <span aria-hidden="true">✨</span> Extract tasks
-            </button>
-          </footer>
-        </article>
-
-        <article class="card card--note" data-id="n2" data-color="pink" data-tags="personal">
-          <header class="card__head">
-            <h2 class="card__title">Gift ideas for Mom</h2>
-            <div class="card__actions">
-              <button class="icon-btn icon-btn--sm" type="button" data-action="palette" aria-label="Change color"><svg class="icon icon--sm"><use href="#i-palette"/></svg></button>
-              <button class="icon-btn icon-btn--sm" type="button" data-action="edit" aria-label="Edit card"><svg class="icon icon--sm"><use href="#i-edit"/></svg></button>
-              <button class="icon-btn icon-btn--sm" type="button" data-action="delete" aria-label="Delete card"><svg class="icon icon--sm"><use href="#i-trash"/></svg></button>
-            </div>
-          </header>
-          <textarea class="note__text" rows="3" aria-label="Note text">A good reading lamp, a silk scarf, or a framed family photo.</textarea>
-          <footer class="card__foot">
-            <div class="badges"><span class="badge" data-tag="personal">Personal</span></div>
-            <button class="ai-btn" type="button" data-action="extract"><span aria-hidden="true">✨</span> Extract tasks</button>
-          </footer>
-        </article>
-
-      </div>
-
-      <div id="notes-empty" class="empty" hidden>
-        <svg class="icon icon--xl"><use href="#i-note"/></svg>
-        <p class="empty__title">No notes here yet</p>
-        <p class="empty__sub">Tap + to write your first note.</p>
+      <div id="notes-split" class="notes-split">
+        <aside id="notes-list" class="notes-list" aria-label="Notes"></aside>
+        <div id="note-editor" class="notes-editor ed"></div>
       </div>
     </section>
 

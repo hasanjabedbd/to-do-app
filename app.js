@@ -103,7 +103,7 @@ window.addEventListener("pagehide", flushPending);
 function onRemote(cards) {
   if (timers.size || dragging) return; // don't clobber unsaved edits or a drag in progress
   state.cards = [...cards].sort(byOrder);
-  if (document.activeElement?.closest?.(".card")) return; // don't steal focus mid-edit
+  if (document.activeElement?.closest?.(".card, .notes-editor")) return; // don't steal focus mid-edit
   render();
 }
 
@@ -128,6 +128,7 @@ function taskHTML(item, editing) {
         <input class="task__check" type="checkbox"${item.done ? " checked" : ""}>
         <span class="task__text" contenteditable="${editable}">${esc(item.text)}</span>
       </label>
+      <button class="task__grip" type="button" data-drag aria-label="Drag to reorder">${icon("grip")}</button>
     </li>`;
 }
 
@@ -180,12 +181,10 @@ function autoGrow(ta) {
 }
 
 function render() {
-  for (const type of ["note", "todo"]) {
-    const list = state.cards.filter((c) => c.type === type && matches(c));
-    el.grids[type].innerHTML = list.map(cardHTML).join("");
-    el.empty[type].hidden = list.length > 0;
-    $$("textarea.note__text", el.grids[type]).forEach(autoGrow);
-  }
+  renderNotes();
+  const todos = state.cards.filter((c) => c.type === "todo" && matches(c));
+  el.grids.todo.innerHTML = todos.map(cardHTML).join("");
+  el.empty.todo.hidden = todos.length > 0;
   state.newId = null;
 }
 
@@ -228,13 +227,12 @@ function createCard(type, data = {}, { edit = true } = {}) {
   state.cards.sort(byOrder);
   state.newId = card.id;
   state.editingId = edit ? card.id : state.editingId;
+  if (type === "note") { state.selectedNoteId = card.id; state.noteOpen = true; }
   saveNow(card);
   render();
 
-  if (edit) {
-    const t = $(".card__title", cardEl(card.id));
-    t?.focus();
-  }
+  if (type === "note") $("#ed-title")?.focus();
+  else if (edit) $(".card__title", cardEl(card.id) || document)?.focus();
   return card;
 }
 
@@ -508,6 +506,8 @@ el.main.addEventListener("focusout", (e) => {
    ========================================================================== */
 function setView(view) {
   state.view = view;
+  document.body.classList.toggle("view-notes", view === "notes");
+  el.main.classList.toggle("on-notes", view === "notes");
   el.tabs.forEach((tab) => {
     const on = tab.dataset.view === view;
     tab.classList.toggle("is-active", on);
@@ -693,15 +693,22 @@ let dragging = false;
 el.main.addEventListener("pointerdown", (e) => {
   const handle = e.target.closest("[data-drag]");
   if (!handle || (e.pointerType === "mouse" && e.button !== 0)) return;
-  const node = handle.closest(".card");
+  const node = handle.closest(".task, .note-item, .card");
   if (!node) return;
   e.preventDefault();
-  startDrag(node, e);
+
+  if (node.classList.contains("task")) {
+    startDrag(node, e, ".task", () => commitTasks(node));
+  } else {
+    const grid = node.parentElement;
+    const type = findCard(node.dataset.id)?.type;
+    const sel = node.classList.contains("note-item") ? ".note-item" : ".card";
+    startDrag(node, e, sel, () => commitOrder(grid, type));
+  }
 });
 
-function startDrag(node, e) {
+function startDrag(node, e, sel, onDrop) {
   const grid = node.parentElement;
-  const type = node.classList.contains("card--todo") ? "todo" : "note";
   const rect = node.getBoundingClientRect();
   const ox = e.clientX - rect.left, oy = e.clientY - rect.top;
 
@@ -710,6 +717,11 @@ function startDrag(node, e) {
   clone.classList.remove("is-new");
   clone.classList.add("drag-clone");
   Object.assign(clone.style, { width: rect.width + "px", left: rect.left + "px", top: rect.top + "px" });
+  const host = node.closest(".card");
+  if (host && node.classList.contains("task")) {
+    clone.style.background = getComputedStyle(host).backgroundColor;
+    clone.style.color = getComputedStyle(host).color;
+  }
   const shield = document.createElement("div");
   shield.className = "drag-shield";
   document.body.append(shield, clone);
@@ -722,13 +734,17 @@ function startDrag(node, e) {
     clone.style.left = ev.clientX - ox + "px";
     clone.style.top = ev.clientY - oy + "px";
 
-    // Scroll the page when dragging near the top or bottom edge
-    if (ev.clientY < 90) window.scrollBy(0, -16);
+    // Auto-scroll: the notes list scrolls by itself, everything else scrolls the page
+    if (grid.scrollHeight > grid.clientHeight + 2 && getComputedStyle(grid).overflowY !== "visible") {
+      const gr = grid.getBoundingClientRect();
+      if (ev.clientY < gr.top + 50) grid.scrollTop -= 14;
+      else if (ev.clientY > gr.bottom - 50) grid.scrollTop += 14;
+    } else if (ev.clientY < 90) window.scrollBy(0, -16);
     else if (ev.clientY > innerHeight - 90) window.scrollBy(0, 16);
 
     const under = document
       .elementsFromPoint(ev.clientX, ev.clientY)
-      .find((n) => n.classList?.contains("card") && n !== node && n !== clone && n.parentElement === grid);
+      .find((n) => n.matches?.(sel) && n !== node && n !== clone && n.parentElement === grid);
     if (!under) return;
     const r = under.getBoundingClientRect();
     const after = ev.clientY > r.top + r.height / 2;
@@ -742,7 +758,7 @@ function startDrag(node, e) {
     document.body.classList.remove("is-dragging-cards");
     node.classList.remove("is-dragging");
     dragging = false;
-    if (commit) commitOrder(grid, type); else render();
+    if (commit) onDrop(); else render();
   };
 
   shield.addEventListener("pointermove", onMove);
@@ -750,9 +766,9 @@ function startDrag(node, e) {
   shield.addEventListener("pointercancel", () => end(false));
 }
 
-// Save the new order. Cards hidden by a search/filter keep their place.
+// Save a new card/note order. Items hidden by a search/filter keep their place.
 function commitOrder(grid, type) {
-  const domIds = $$(".card", grid).map((c) => c.dataset.id);
+  const domIds = [...grid.children].map((c) => c.dataset.id).filter(Boolean);
   const visible = new Set(domIds);
   const full = state.cards.filter((c) => c.type === type).sort(byOrder).map((c) => c.id);
   const slots = [];
@@ -769,6 +785,170 @@ function commitOrder(grid, type) {
   state.cards.sort(byOrder);
   render();
 }
+
+// Save a new order of the checklist items inside one to-do card
+function commitTasks(li) {
+  const node = li.closest(".card");
+  const card = node && findCard(node.dataset.id);
+  if (!card) return;
+  const byId = new Map(card.items.map((i) => [i.id, i]));
+  card.items = $$(".task", li.parentElement).map((t) => byId.get(t.dataset.item)).filter(Boolean);
+  saveNow(card);
+}
+
+/* ==========================================================================
+   Notes: Simplenote-style list (left) + editor (right)
+   On phones the list is shown first; tapping a note opens the editor.
+   ========================================================================== */
+const noteSplit = $("#notes-split");
+const noteList = $("#notes-list");
+const noteEditor = $("#note-editor");
+const isDesktop = () => matchMedia("(min-width: 800px)").matches;
+const previewOf = (n) => (n.text || "").replace(/\s+/g, " ").trim().slice(0, 140) || "No additional text";
+
+function noteItemHTML(n) {
+  return `
+    <div class="note-item${n.id === state.selectedNoteId ? " is-selected" : ""}" data-id="${n.id}" role="button" tabindex="0">
+      <div class="note-item__row">
+        <span class="note-item__title">${esc(n.title) || "New note"}</span>
+        ${n.pinned ? icon("pin", "icon icon--sm note-item__pin") : ""}
+      </div>
+      <span class="note-item__preview">${esc(previewOf(n))}</span>
+      <button class="note-item__grip" type="button" data-drag aria-label="Drag to reorder">${icon("grip")}</button>
+    </div>`;
+}
+
+function renderNotes() {
+  const list = state.cards.filter((c) => c.type === "note" && matches(c));
+  if (!list.some((n) => n.id === state.selectedNoteId)) {
+    state.selectedNoteId = isDesktop() && list[0] ? list[0].id : null;
+    if (!state.selectedNoteId) state.noteOpen = false;
+  }
+  noteList.innerHTML = list.length
+    ? list.map(noteItemHTML).join("")
+    : `<div class="notes-list__empty"><p><strong>No notes here yet</strong></p><p>Tap + to write your first note.</p></div>`;
+  renderEditor();
+}
+
+function renderEditor() {
+  const note = findCard(state.selectedNoteId);
+  const open = Boolean(note && state.noteOpen);
+  noteSplit.classList.toggle("is-open", open);
+  document.body.classList.toggle("note-open", open);
+
+  if (!note) {
+    noteEditor.innerHTML = `<div class="ed__empty">Select a note, or tap + to create one.</div>`;
+    return;
+  }
+  const editing = state.editingId === note.id;
+  const tags = editing
+    ? TAGS.map((t) => `<button type="button" class="badge badge--toggle${note.tags.includes(t) ? " is-on" : ""}" data-tag="${t}" data-ed-tag="${t}" aria-pressed="${note.tags.includes(t)}">${cap(t)}</button>`).join("")
+    : note.tags.length
+      ? note.tags.map((t) => `<span class="badge" data-tag="${t}">${cap(t)}</span>`).join("")
+      : `<span class="ed__hint">No tags</span>`;
+
+  noteEditor.innerHTML = `
+    <div class="ed__bar">
+      <button class="icon-btn ed__back" type="button" data-ed="back" aria-label="Back to notes">${icon("back", "icon")}</button>
+      <span class="ed__spacer"></span>
+      <button class="icon-btn" type="button" data-ed="pin" aria-pressed="${Boolean(note.pinned)}" aria-label="${note.pinned ? "Unpin" : "Pin to top"}">${icon("pin", "icon")}</button>
+      <button class="icon-btn" type="button" data-ed="edit" aria-pressed="${editing}" aria-label="${editing ? "Finish editing" : "Edit note"}">${icon(editing ? "check" : "edit", "icon")}</button>
+      <button class="icon-btn" type="button" data-ed="info" aria-label="Note info">${icon("info", "icon")}</button>
+      <button class="icon-btn" type="button" data-ed="delete" aria-label="Delete note">${icon("trash", "icon")}</button>
+    </div>
+    <input id="ed-title" class="ed__title" placeholder="Title" maxlength="120" value="${esc(note.title)}" aria-label="Title"${editing ? "" : " readonly"}>
+    <textarea id="ed-text" class="ed__text" placeholder="${editing ? "Write something…" : "Tap the pencil to write"}" aria-label="Note text"${editing ? "" : " readonly"}>${esc(note.text)}</textarea>
+    <div class="ed__foot">${tags}</div>`;
+}
+
+function updateNoteItem(note) {
+  const it = $(`.note-item[data-id="${note.id}"]`, noteList);
+  if (!it) return;
+  $(".note-item__title", it).textContent = note.title || "New note";
+  $(".note-item__preview", it).textContent = previewOf(note);
+}
+
+function releaseNoteEdit() {
+  const cur = findCard(state.editingId);
+  if (cur && cur.type === "note") { saveNow(cur); state.editingId = null; }
+}
+
+function selectNote(id) {
+  releaseNoteEdit();
+  state.selectedNoteId = id;
+  state.noteOpen = true;
+  $$(".note-item", noteList).forEach((n) => n.classList.toggle("is-selected", n.dataset.id === id));
+  renderEditor();
+}
+
+noteList.addEventListener("click", (e) => {
+  if (e.target.closest("[data-drag]")) return;
+  const it = e.target.closest(".note-item");
+  if (it) selectNote(it.dataset.id);
+});
+noteList.addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches(".note-item")) {
+    e.preventDefault();
+    selectNote(e.target.dataset.id);
+  }
+});
+
+noteEditor.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-ed], [data-ed-tag]");
+  const note = findCard(state.selectedNoteId);
+  if (!b || !note) return;
+
+  if (b.dataset.edTag) {
+    toggleTag(note, b.dataset.edTag);
+    b.classList.toggle("is-on");
+    b.setAttribute("aria-pressed", b.classList.contains("is-on"));
+    return;
+  }
+
+  switch (b.dataset.ed) {
+    case "back":
+      releaseNoteEdit();
+      state.noteOpen = false;
+      renderNotes();
+      break;
+    case "pin":
+      togglePin(note);
+      break;
+    case "edit":
+      if (state.editingId === note.id) {
+        state.editingId = null;
+        saveNow(note);
+        renderEditor();
+      } else {
+        if (!(await askPin("Enter PIN to edit"))) return;
+        releaseNoteEdit();
+        state.editingId = note.id;
+        renderEditor();
+        $("#ed-text")?.focus();
+      }
+      break;
+    case "info": {
+      const fmt = (t) => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+      const words = note.text.trim() ? note.text.trim().split(/\s+/).length : 0;
+      toast(`Created ${fmt(note.createdAt)} · Modified ${fmt(note.updatedAt)} · ${words} words`, { duration: 6000 });
+      break;
+    }
+    case "delete":
+      if (!(await askPin("Enter PIN to delete"))) return;
+      deleteCard(note.id);
+      break;
+  }
+});
+
+noteEditor.addEventListener("input", (e) => {
+  const note = findCard(state.selectedNoteId);
+  if (!note) return;
+  if (e.target.id === "ed-title") note.title = e.target.value;
+  else if (e.target.id === "ed-text") note.text = e.target.value;
+  else return;
+  queueSave(note);
+  updateNoteItem(note);
+});
 
 /* ==========================================================================
    Reorder the Notes / To-Do tabs: drag a tab left or right.
